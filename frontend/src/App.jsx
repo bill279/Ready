@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react'
+
+const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 import { Mic, MicOff, Zap, Globe, Mail, Calendar, AlertCircle, CheckCircle } from 'lucide-react'
 import { useRealtimeSession } from './useRealtimeSession'
 
@@ -95,7 +97,7 @@ export default function App() {
           <StatusDot state={state} />
           {!outlookConnected ? (
             <a
-              href="/auth/outlook"
+              href={`${BACKEND}/auth/outlook`}
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors border border-slate-700 hover:border-slate-500 px-2.5 py-1.5 rounded-lg"
             >
               <AlertCircle size={12} className="text-yellow-400" />

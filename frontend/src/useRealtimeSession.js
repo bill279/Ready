@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback } from 'react'
 
-const WS_URL = '/ws/realtime'
+const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
+const WS_URL = BACKEND.replace(/^http/, 'ws') + '/ws/realtime'
 const SAMPLE_RATE = 24000
 
 export function useRealtimeSession() {
@@ -82,7 +83,7 @@ export function useRealtimeSession() {
 
     // Check outlook status
     try {
-      const r = await fetch('/auth/status')
+      const r = await fetch(`${BACKEND}/auth/status`)
       const data = await r.json()
       setOutlookConnected(data.outlook_connected)
     } catch {}
