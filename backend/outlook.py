@@ -9,9 +9,9 @@ _token_cache: dict = {}
 
 def _get_app():
     return msal.ConfidentialClientApplication(
-        client_id=os.environ["AZURE_CLIENT_ID"],
-        client_credential=os.environ["AZURE_CLIENT_SECRET"],
-        authority=f"https://login.microsoftonline.com/{os.environ.get('AZURE_TENANT_ID', 'common')}",
+        client_id=os.environ["AZURE_CLIENT_ID"].strip(),
+        client_credential=os.environ["AZURE_CLIENT_SECRET"].strip(),
+        authority=f"https://login.microsoftonline.com/{os.environ.get('AZURE_TENANT_ID', 'common').strip()}",
     )
 
 
