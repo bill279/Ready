@@ -50,6 +50,16 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/auth/debug")
+async def auth_debug():
+    redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
+    return {
+        "FRONTEND_URL": FRONTEND_URL,
+        "BACKEND_URL": BACKEND_URL,
+        "redirect_uri": redirect_uri,
+    }
+
+
 @app.get("/auth/outlook")
 async def outlook_auth():
     # Redirect URI points to frontend — avoids Safari rejecting long backend URLs
