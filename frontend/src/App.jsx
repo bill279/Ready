@@ -78,10 +78,23 @@ export default function App() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [transcript])
 
-  // Check for oauth callback
+  // Handle OAuth callback from Azure — /auth/callback?code=...
   useEffect(() => {
-    if (window.location.search.includes('outlook=connected')) {
+    const path = window.location.pathname
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get('code')
+    if (path === '/auth/callback' && code) {
       window.history.replaceState({}, '', '/')
+      fetch(`${BACKEND}/auth/outlook/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      })
+        .then(r => r.json())
+        .then(data => {
+          if (data.status === 'connected') window.location.reload()
+        })
+        .catch(console.error)
     }
   }, [])
 

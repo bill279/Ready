@@ -51,20 +51,22 @@ async def health():
 
 
 @app.get("/auth/outlook")
-async def outlook_auth(request: Request):
-    redirect_uri = BACKEND_URL.rstrip("/") + "/auth/outlook/callback"
+async def outlook_auth():
+    # Redirect URI points to frontend — avoids Safari rejecting long backend URLs
+    redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
     url = outlook_module.get_auth_url(redirect_uri)
     return RedirectResponse(url)
 
 
-@app.get("/auth/outlook/callback")
-async def outlook_callback(request: Request, code: str = "", error: str = ""):
-    if error:
-        return JSONResponse({"error": error}, status_code=400)
-    redirect_uri = BACKEND_URL.rstrip("/") + "/auth/outlook/callback"
+@app.post("/auth/outlook/exchange")
+async def outlook_exchange(body: dict):
+    code = body.get("code", "")
+    if not code:
+        return JSONResponse({"error": "missing code"}, status_code=400)
+    redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
     try:
         outlook_module.exchange_code(code, redirect_uri)
-        return RedirectResponse(f"{FRONTEND_URL}?outlook=connected")
+        return {"status": "connected"}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
