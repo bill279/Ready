@@ -15,6 +15,7 @@ import outlook as outlook_module
 app = FastAPI(title="Executive Assistant API")
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,7 +52,7 @@ async def health():
 
 @app.get("/auth/outlook")
 async def outlook_auth(request: Request):
-    redirect_uri = str(request.base_url) + "auth/outlook/callback"
+    redirect_uri = BACKEND_URL.rstrip("/") + "/auth/outlook/callback"
     url = outlook_module.get_auth_url(redirect_uri)
     return RedirectResponse(url)
 
@@ -60,7 +61,7 @@ async def outlook_auth(request: Request):
 async def outlook_callback(request: Request, code: str = "", error: str = ""):
     if error:
         return JSONResponse({"error": error}, status_code=400)
-    redirect_uri = str(request.base_url) + "auth/outlook/callback"
+    redirect_uri = BACKEND_URL.rstrip("/") + "/auth/outlook/callback"
     try:
         outlook_module.exchange_code(code, redirect_uri)
         return RedirectResponse(f"{FRONTEND_URL}?outlook=connected")
