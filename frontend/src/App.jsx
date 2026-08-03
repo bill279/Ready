@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react'
 const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 import { Mic, MicOff, Zap, Globe, Mail, Calendar, AlertCircle, CheckCircle } from 'lucide-react'
 import { useRealtimeSession } from './useRealtimeSession'
+import { getSessionId } from './session'
 
 const TOOL_ICONS = {
   web_search: Globe,
@@ -84,11 +85,13 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     if (path === '/auth/callback' && code) {
+      // `state` carries the session that started the flow; fall back to ours.
+      const session = params.get('state') || getSessionId()
       window.history.replaceState({}, '', '/')
       fetch(`${BACKEND}/auth/outlook/exchange`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, session }),
       })
         .then(r => r.json())
         .then(data => {
@@ -110,7 +113,7 @@ export default function App() {
           <StatusDot state={state} />
           {!outlookConnected ? (
             <a
-              href={`${BACKEND}/auth/outlook`}
+              href={`${BACKEND}/auth/outlook?session=${encodeURIComponent(getSessionId())}`}
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors border border-slate-700 hover:border-slate-500 px-2.5 py-1.5 rounded-lg"
             >
               <AlertCircle size={12} className="text-yellow-400" />

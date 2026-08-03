@@ -1,8 +1,11 @@
 import os
 import json
 import asyncio
+import httpx
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from dotenv import load_dotenv
@@ -11,8 +14,17 @@ load_dotenv()
 
 import tools as tool_module
 import outlook as outlook_module
+import token_store
 
-app = FastAPI(title="Executive Assistant API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Touch the store at boot so a broken TOKEN_DB_PATH surfaces here, not on
+    # the first email the assistant tries to send.
+    await asyncio.to_thread(token_store.purge_stale)
+    yield
+
+
+app = FastAPI(title="Executive Assistant API", lifespan=lifespan)
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
@@ -45,50 +57,91 @@ Guidelines:
 """
 
 
+REQUIRED_ENV = ["OPENAI_API_KEY", "TAVILY_API_KEY", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"]
+
+
 @app.get("/health")
-async def health():
-    return {"status": "ok"}
+async def health(deep: bool = False):
+    """Report what the assistant actually needs to work.
 
+    Default is config-only so Render's health check stays cheap; ?deep=true
+    additionally verifies the OpenAI key against the live API.
+    """
+    checks: dict = {}
+    healthy = True
 
-@app.get("/auth/debug")
-async def auth_debug():
-    redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
-    return {
-        "FRONTEND_URL": FRONTEND_URL,
-        "BACKEND_URL": BACKEND_URL,
-        "redirect_uri": redirect_uri,
-    }
+    missing = [name for name in REQUIRED_ENV if not os.environ.get(name, "").strip()]
+    checks["config"] = "ok" if not missing else f"missing: {', '.join(missing)}"
+    if missing:
+        healthy = False
+
+    try:
+        checks["token_store"] = {"status": "ok", **token_store.stats()}
+    except Exception as e:
+        checks["token_store"] = {"status": "error", "detail": str(e)}
+        healthy = False
+
+    if deep:
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                )
+            if r.status_code == 200:
+                checks["openai_api"] = "ok"
+            else:
+                checks["openai_api"] = f"http {r.status_code}"
+                healthy = False
+        except Exception as e:
+            checks["openai_api"] = f"unreachable: {e}"
+            healthy = False
+
+    body = {"status": "ok" if healthy else "degraded", "checks": checks}
+    return JSONResponse(body, status_code=200 if healthy else 503)
 
 
 @app.get("/auth/outlook")
-async def outlook_auth():
-    # Redirect URI points to frontend — avoids Safari rejecting long backend URLs
+async def outlook_auth(session: str = ""):
+    # Redirect URI points to frontend — avoids Safari rejecting long backend URLs.
+    # The session id rides along in `state` so the callback binds the tokens to
+    # the browser that actually started the flow.
     redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
-    url = outlook_module.get_auth_url(redirect_uri)
+    url = outlook_module.get_auth_url(redirect_uri, state=session)
     return RedirectResponse(url)
 
 
 @app.post("/auth/outlook/exchange")
 async def outlook_exchange(body: dict):
     code = body.get("code", "")
+    session = (body.get("session") or "").strip()
     if not code:
         return JSONResponse({"error": "missing code"}, status_code=400)
+    if not session:
+        return JSONResponse({"error": "missing session"}, status_code=400)
     redirect_uri = FRONTEND_URL.rstrip("/") + "/auth/callback"
     try:
-        outlook_module.exchange_code(code, redirect_uri)
-        return {"status": "connected"}
+        await asyncio.to_thread(outlook_module.exchange_code, session, code, redirect_uri)
+        return {"status": "connected", **outlook_module.status(session)}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
 @app.get("/auth/status")
-async def auth_status():
-    return {"outlook_connected": bool(outlook_module._token_cache.get("access_token"))}
+async def auth_status(session: str = ""):
+    return outlook_module.status(session.strip())
+
+
+@app.post("/auth/disconnect")
+async def auth_disconnect(body: dict):
+    outlook_module.disconnect((body.get("session") or "").strip())
+    return {"status": "disconnected"}
 
 
 @app.websocket("/ws/realtime")
 async def realtime_proxy(client_ws: WebSocket):
     await client_ws.accept()
+    session_id = client_ws.query_params.get("session", "").strip()
 
     openai_headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -147,7 +200,7 @@ async def realtime_proxy(client_ws: WebSocket):
                             await client_ws.send_text(message)
 
                             # Execute tool
-                            result = await tool_module.execute_tool(fn_name, args)
+                            result = await tool_module.execute_tool(fn_name, args, session_id)
 
                             # Send result back to OpenAI
                             tool_result = {

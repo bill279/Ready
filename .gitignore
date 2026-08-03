@@ -4,3 +4,4 @@ frontend/node_modules/
 frontend/dist/
 __pycache__/
 *.pyc
+backend/tokens.db

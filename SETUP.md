@@ -70,13 +70,31 @@ Then open http://localhost:5173
 
 Click **"Connect Outlook"** in the top right of the app and sign in with your Microsoft account.
 
+Tokens are stored per browser: the frontend keeps a random session id in
+`localStorage` and the backend saves that session's Outlook tokens in a small
+SQLite file (`backend/tokens.db`, override with `TOKEN_DB_PATH`). Access tokens
+are refreshed automatically, so the connection survives both the one-hour token
+lifetime and a backend restart. Clearing site data means reconnecting.
+
 ---
 
-## 5. Deploy to production
+## 5. Health check
+
+`GET /health` reports config and token-store state, returning 503 if anything
+required is missing:
+
+```bash
+curl http://localhost:8000/health
+curl "http://localhost:8000/health?deep=true"   # also verifies the OpenAI key live
+```
+
+---
+
+## 6. Deploy to production
 
 For production, you'll want to:
 - Use a proper secret store (not .env)
-- Store Outlook tokens in a database (currently in-memory)
+- Mount a persistent disk and set `TOKEN_DB_PATH` to it, so Outlook logins survive redeploys
 - Deploy backend on Railway/Render/Fly.io
 - Deploy frontend on Vercel/Netlify
 - Update `FRONTEND_URL` and Azure redirect URIs
