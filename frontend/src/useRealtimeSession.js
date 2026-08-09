@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
+import { getSessionId } from './session'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL || ''
 const WS_URL = BACKEND.replace(/^http/, 'ws') + '/ws/realtime'
@@ -78,17 +79,23 @@ export function useRealtimeSession() {
     isPlayingRef.current = false
   }, [])
 
-  const connect = useCallback(async () => {
-    setState('connecting')
-
-    // Check outlook status
+  const checkOutlook = useCallback(async () => {
     try {
-      const r = await fetch(`${BACKEND}/auth/status`)
+      const r = await fetch(`${BACKEND}/auth/status?session=${encodeURIComponent(getSessionId())}`)
       const data = await r.json()
       setOutlookConnected(data.outlook_connected)
     } catch {}
+  }, [])
 
-    const ws = new WebSocket(WS_URL)
+  // Reflect the real connection state in the header before the user taps connect.
+  useEffect(() => { checkOutlook() }, [checkOutlook])
+
+  const connect = useCallback(async () => {
+    setState('connecting')
+
+    await checkOutlook()
+
+    const ws = new WebSocket(`${WS_URL}?session=${encodeURIComponent(getSessionId())}`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -107,7 +114,7 @@ export function useRealtimeSession() {
     }
 
     ws.onerror = () => setState('idle')
-  }, [])
+  }, [checkOutlook])
 
   const handleServerEvent = useCallback((event) => {
     const t = event.type

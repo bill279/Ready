@@ -75,7 +75,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-async def execute_tool(name: str, args: dict) -> str:
+async def execute_tool(name: str, args: dict, session_id: str = "") -> str:
     try:
         if name == "web_search":
             results = tavily.search(
@@ -91,11 +91,14 @@ async def execute_tool(name: str, args: dict) -> str:
             return json.dumps({"answer": answer, "sources": sources})
 
         elif name == "send_email":
-            result = await outlook_module.send_email(args["to"], args["subject"], args["body"])
+            result = await outlook_module.send_email(
+                session_id, args["to"], args["subject"], args["body"]
+            )
             return json.dumps(result)
 
         elif name == "list_emails":
             emails = await outlook_module.list_emails(
+                session_id,
                 folder=args.get("folder", "inbox"),
                 top=args.get("top", 10),
             )
@@ -112,7 +115,7 @@ async def execute_tool(name: str, args: dict) -> str:
             return json.dumps(simplified)
 
         elif name == "list_calendar_events":
-            events = await outlook_module.list_calendar_events(top=args.get("top", 10))
+            events = await outlook_module.list_calendar_events(session_id, top=args.get("top", 10))
             simplified = [
                 {
                     "subject": e.get("subject"),
@@ -127,6 +130,7 @@ async def execute_tool(name: str, args: dict) -> str:
 
         elif name == "create_calendar_event":
             result = await outlook_module.create_calendar_event(
+                session_id,
                 subject=args["subject"],
                 start=args["start"],
                 end=args["end"],
@@ -137,6 +141,9 @@ async def execute_tool(name: str, args: dict) -> str:
 
         else:
             return json.dumps({"error": f"Unknown tool: {name}"})
+
+    except outlook_module.NotConnectedError as e:
+        return json.dumps({"error": str(e), "needs_auth": True})
 
     except Exception as e:
         return json.dumps({"error": str(e)})
